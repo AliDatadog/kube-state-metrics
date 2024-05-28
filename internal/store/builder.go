@@ -267,8 +267,10 @@ func (b *Builder) BuildStores() [][]cache.Store {
 	var allStores [][]cache.Store
 	var activeStoreNames []string
 
+	klog.InfoS("debug enabled resources", "enabledResources", strings.Join(b.enabledResources, ","))
 	for _, c := range b.enabledResources {
 		constructor, ok := availableStores[c]
+		klog.InfoS("debug available stores", "store", c, "ok", ok)
 		if ok {
 			stores := constructor(b)
 			activeStoreNames = append(activeStoreNames, c)
