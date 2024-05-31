@@ -27,12 +27,13 @@ import (
 // Users who want to extend the kube-state-metrics to support Custom Resource metrics should
 // implement this interface.
 type RegistryFactory interface {
-	// Name returns the name of custom resource.
+	// Name returns the name of the RegistryFactory.
+	// It should not be shared between different RegistryFactory.
 	//
 	// Example:
 	//
-	// func (f *FooFactory) Name() string {
-	//	return "foos"
+	// func (f *JobsExtendedFactory) Name() string {
+	//	return "jobs_extended"
 	// }
 	Name() string
 

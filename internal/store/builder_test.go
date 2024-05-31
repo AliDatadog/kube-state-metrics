@@ -17,9 +17,23 @@ limitations under the License.
 package store
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	batchv1 "k8s.io/api/batch/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
+	basemetrics "k8s.io/component-base/metrics"
+
+	"k8s.io/kube-state-metrics/v2/pkg/metric"
+	generator "k8s.io/kube-state-metrics/v2/pkg/metric_generator"
 	"k8s.io/kube-state-metrics/v2/pkg/options"
 )
 
@@ -195,4 +209,80 @@ func TestWithAllowAnnotations(t *testing.T) {
 			t.Errorf("Test error for Desc: %s\n Want: \n%+v\n Got: \n%#+v", test.Desc, test.Wanted, resolvedAllowAnnotations)
 		}
 	}
+}
+
+type extendedJobFactory struct{}
+
+// Name is the name of the factory
+func (f *extendedJobFactory) Name() string {
+	return "jobs_extended"
+}
+
+// CreateClient is not implemented
+func (f *extendedJobFactory) CreateClient(*rest.Config) (interface{}, error) {
+	return fake.NewSimpleClientset(), nil
+}
+
+// MetricFamilyGenerators returns the extended job metric family generators
+func (f *extendedJobFactory) MetricFamilyGenerators() []generator.FamilyGenerator {
+	return []generator.FamilyGenerator{
+		*generator.NewFamilyGeneratorWithStability(
+			"kube_job_completion_time",
+			"Completion time of a job in seconds.",
+			metric.Gauge,
+			basemetrics.ALPHA,
+			"",
+			wrapJobFunc(func(j *batchv1.Job) *metric.Family {
+				ms := []*metric.Metric{}
+
+				if j.Status.CompletionTime != nil {
+					ms = []*metric.Metric{
+						{
+							Value: float64(j.Status.CompletionTime.Unix()),
+						},
+					}
+				}
+
+				return &metric.Family{
+					Metrics: ms,
+				}
+			}),
+		),
+	}
+}
+
+// ExpectedType returns the type expected by the factory
+func (f *extendedJobFactory) ExpectedType() interface{} {
+	return &batchv1.Job{}
+}
+
+// ListWatch returns a ListerWatcher for batchv1.Job
+func (f *extendedJobFactory) ListWatch(customResourceClient interface{}, ns string, fieldSelector string) cache.ListerWatcher {
+	client := customResourceClient.(kubernetes.Interface)
+	return &cache.ListWatch{
+		ListFunc: func(opts metav1.ListOptions) (runtime.Object, error) {
+			opts.FieldSelector = fieldSelector
+			return client.BatchV1().Jobs(ns).List(context.TODO(), opts)
+		},
+		WatchFunc: func(opts metav1.ListOptions) (watch.Interface, error) {
+			opts.FieldSelector = fieldSelector
+			return client.BatchV1().Jobs(ns).Watch(context.TODO(), opts)
+		},
+	}
+}
+
+type dummyFamilyGeneratorFilter struct{}
+
+func (dummyFamilyGeneratorFilter) Test(generator.FamilyGenerator) bool { return true }
+
+func TestCustomFactory(t *testing.T) {
+	b := NewBuilder()
+	b.WithCustomResourceStoreFactories(&extendedJobFactory{})
+	b.WithGenerateStoresFunc(b.DefaultGenerateStoresFunc())
+	b.WithGenerateCustomResourceStoresFunc(b.DefaultGenerateCustomResourceStoresFunc())
+	b.WithFamilyGeneratorFilter(dummyFamilyGeneratorFilter{})
+	err := b.WithEnabledResources([]string{"jobs", "jobs_extended"})
+	assert.NoError(t, err)
+	stores := b.BuildStores()
+	assert.Len(t, stores, 2)
 }

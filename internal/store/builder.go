@@ -48,7 +48,6 @@ import (
 	metricsstore "k8s.io/kube-state-metrics/v2/pkg/metrics_store"
 	"k8s.io/kube-state-metrics/v2/pkg/options"
 	"k8s.io/kube-state-metrics/v2/pkg/sharding"
-	"k8s.io/kube-state-metrics/v2/pkg/util"
 	"k8s.io/kube-state-metrics/v2/pkg/watch"
 )
 
@@ -197,17 +196,10 @@ func (b *Builder) DefaultGenerateCustomResourceStoresFunc() ksmtypes.BuildCustom
 func (b *Builder) WithCustomResourceStoreFactories(fs ...customresource.RegistryFactory) {
 	for i := range fs {
 		f := fs[i]
-		gvr := util.GVRFromType(f.Name(), f.ExpectedType())
-		var gvrString string
-		if gvr != nil {
-			gvrString = gvr.String()
-		} else {
-			gvrString = f.Name()
+		if _, ok := availableStores[f.Name()]; ok {
+			klog.InfoS("Updating store", "GVR", f.Name())
 		}
-		if _, ok := availableStores[gvrString]; ok {
-			klog.InfoS("Updating store", "GVR", gvrString)
-		}
-		availableStores[gvrString] = func(b *Builder) []cache.Store {
+		availableStores[f.Name()] = func(b *Builder) []cache.Store {
 			return b.buildCustomResourceStoresFunc(
 				f.Name(),
 				f.MetricFamilyGenerators(),
@@ -553,14 +545,7 @@ func (b *Builder) buildCustomResourceStores(resourceName string,
 
 	familyHeaders := generator.ExtractMetricFamilyHeaders(metricFamilies)
 
-	gvr := util.GVRFromType(resourceName, expectedType)
-	var gvrString string
-	if gvr != nil {
-		gvrString = gvr.String()
-	} else {
-		gvrString = resourceName
-	}
-	customResourceClient, ok := b.customResourceClients[gvrString]
+	customResourceClient, ok := b.customResourceClients[resourceName]
 	if !ok {
 		klog.InfoS("Custom resource client does not exist", "resourceName", resourceName)
 		return []cache.Store{}

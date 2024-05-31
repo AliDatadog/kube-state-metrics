@@ -28,7 +28,6 @@ import (
 
 	"k8s.io/kube-state-metrics/v2/internal/discovery"
 	"k8s.io/kube-state-metrics/v2/pkg/customresource"
-	"k8s.io/kube-state-metrics/v2/pkg/util"
 )
 
 // customResourceState is used to prefix the auto-generated GVK labels as well as an appendix for the metric itself
@@ -204,11 +203,10 @@ func FromConfig(decoder ConfigDecoder, discovererInstance *discovery.CRDiscovere
 			if err != nil {
 				return nil, fmt.Errorf("failed to create metrics factory for %s: %w", resource.GroupVersionKind, err)
 			}
-			gvrString := util.GVRFromType(factory.Name(), factory.ExpectedType()).String()
-			if _, ok := factoriesIndex[gvrString]; ok {
-				klog.InfoS("reloaded factory", "GVR", gvrString)
+			if _, ok := factoriesIndex[factory.Name()]; ok {
+				klog.InfoS("reloaded factory", "GVR", factory.Name())
 			}
-			factoriesIndex[gvrString] = true
+			factoriesIndex[factory.Name()] = true
 			factories = append(factories, factory)
 		}
 		return factories, nil

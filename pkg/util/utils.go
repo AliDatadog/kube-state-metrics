@@ -19,18 +19,14 @@ package util
 import (
 	"fmt"
 	"runtime"
-	"strings"
 
 	"github.com/prometheus/common/version"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
-	testUnstructuredMock "k8s.io/sample-controller/pkg/apis/samplecontroller/v1alpha1"
 
 	"k8s.io/kube-state-metrics/v2/pkg/customresource"
 )
@@ -95,8 +91,7 @@ func CreateCustomResourceClients(apiserver string, kubeconfig string, factories 
 		if err != nil {
 			return nil, err
 		}
-		gvrString := GVRFromType(f.Name(), f.ExpectedType()).String()
-		customResourceClients[gvrString] = customResourceClient
+		customResourceClients[f.Name()] = customResourceClient
 	}
 	return customResourceClients, nil
 }
@@ -132,25 +127,4 @@ func CreateDynamicClient(apiserver string, kubeconfig string) (*dynamic.DynamicC
 	}
 	currentDynamicClient, err = dynamic.NewForConfig(config)
 	return currentDynamicClient, err
-}
-
-// GVRFromType returns the GroupVersionResource for a given type.
-func GVRFromType(resourceName string, expectedType interface{}) *schema.GroupVersionResource {
-	if _, ok := expectedType.(*testUnstructuredMock.Foo); ok {
-		// testUnstructuredMock.Foo is a mock type for testing
-		return nil
-	}
-	apiVersion := expectedType.(*unstructured.Unstructured).Object["apiVersion"].(string)
-	expectedTypeSlice := strings.Split(apiVersion, "/")
-	g := expectedTypeSlice[0]
-	v := expectedTypeSlice[1]
-	if v == "" /* "" group (core) objects */ {
-		v = expectedTypeSlice[0]
-	}
-	r := resourceName
-	return &schema.GroupVersionResource{
-		Group:    g,
-		Version:  v,
-		Resource: r,
-	}
 }
